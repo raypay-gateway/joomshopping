@@ -16,11 +16,6 @@ defined('_JEXEC') or die();
 use Joomla\CMS\Http\Http;
 use Joomla\CMS\Http\HttpFactory;
 
-if (!class_exists ('checkHack')) {
-    require_once dirname(__FILE__). '/raypay_inputcheck.php';
-}
-
-
 class pm_raypay extends PaymentRoot{
     
     function showPaymentForm($params, $pmconfigs){	
