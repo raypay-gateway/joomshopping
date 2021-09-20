@@ -42,15 +42,16 @@ class pm_raypay extends PaymentRoot{
 
         //$callback = $liveurlhost.SEFLink("index.php?option=com_jshopping&controller=checkout&task=step7&act=return&js_paymentclass=".$pm_method->payment_class .'&orderId='. $order->order_id . '&');
        //$callback = $liveurlhost.SEFLink("index.php?option=com_jshopping&controller=checkout&task=step7&act=return&js_paymentclass=".$pm_method->payment_class).'&orderId='. $order->order_id . '&';
-        $callback = JRoute::_( JURI::root() . "index.php?option=com_jshopping&controller=checkout&task=step7&act=return&js_paymentclass=pm_raypay" . "&orderId=". $order->order_id . "&" ) ;
+        $callback = JRoute::_( JURI::root() . "index.php?option=com_jshopping&controller=checkout&task=step7&act=return&js_paymentclass=pm_raypay" . "&orderId=". $order->order_id ) ;
     	$notify_url2 = $liveurlhost.SEFLink("index.php?option=com_jshopping&controller=checkout&task=step2&act=notify&js_paymentclass=".$pm_method->payment_class."&no_lang=1");
 		$desc = 'خرید محصول از فروشگاه JoomShopping  ';
         $user_id = $pmconfigs['user_id'];
-        $acceptor_code = $pmconfigs['acceptor_code'];
+        $marketing_id = $pmconfigs['marketing_id'];
+        $sandbox = !($pmconfigs['sandbox'] == 0);
         $invoice_id             = round(microtime(true) * 1000);
         $amount = strval(round($this->fixOrderTotal($order),0));
 
-        if (!isset($user_id) || $user_id == '' || !isset($acceptor_code) || $acceptor_code == '') {
+        if (!isset($user_id) || $user_id == '' || !isset($marketing_id) || $marketing_id == '') {
 			$app->redirect($notify_url2, '<h2>لطفا تنظیمات درگاه رای پی را بررسی کنید</h2>', $msgType='Error');
 		}
 		
@@ -61,11 +62,12 @@ class pm_raypay extends PaymentRoot{
                 'userID'       => $user_id,
                 'redirectUrl'  => $callback,
                 'factorNumber' => strval($order->order_id),
-                'acceptorCode' => $acceptor_code,
+                'marketingID' => $marketing_id,
+                'enableSandBox' => $sandbox,
                 'comment'      => $desc
             );
 
-            $url  = 'https://api.raypay.ir/raypay/api/v1/Payment/getPaymentTokenWithUserID';
+            $url  = 'https://api.raypay.ir/raypay/api/v1/Payment/pay';
 			$options = array('Content-Type: application/json');
 			$ch = curl_init();
 			curl_setopt($ch, CURLOPT_URL, $url);
@@ -87,17 +89,9 @@ class pm_raypay extends PaymentRoot{
                 $app->enqueueMessage( $msg, 'Error' );
             }
 
-            $access_token = $result->Data->Accesstoken;
-            $terminal_id  = $result->Data->TerminalID;
-
-            echo '<p style="color:#ff0000; font:18px Tahoma; direction:rtl;">در حال اتصال به درگاه بانکی. لطفا صبر کنید ...</p>';
-            echo '<form name="frmRayPayPayment" method="post" action=" https://mabna.shaparak.ir:8080/Pay ">';
-            echo '<input type="hidden" name="TerminalID" value="' . $terminal_id . '" />';
-            echo '<input type="hidden" name="token" value="' . $access_token . '" />';
-            echo '<input class="submit" type="submit" value="پرداخت" /></form>';
-            echo '<script>document.frmRayPayPayment.submit();</script>';
-
-            exit();
+            $token = $result->Data;
+            $link='https://my.raypay.ir/ipg?token=' . $token;
+            Header('Location: '.$link);
 
 		}
 		catch(Exception $e) {
@@ -111,25 +105,23 @@ class pm_raypay extends PaymentRoot{
 			$app	= JFactory::getApplication();
             $this->http = HttpFactory::getHttp();
 			$jinput = $app->input;
-            $invoiceId = $jinput->get->get('?invoiceID', '', 'STRING');
             $orderId = $jinput->get->get('orderId', '', 'STRING');
 			$uri = JURI::getInstance();
 			$pm_method = $this->getPmMethod();       
 			$liveurlhost = $uri->toString(array("scheme",'host', 'port'));
 			$cancel_return = $liveurlhost.SEFLink("index.php?option=com_jshopping&controller=checkout&task=step7&act=cancel&js_paymentclass=".$pm_method->payment_class.'&orderId='. $orderId);
 
-            if ( empty( $invoiceId ) || empty( $orderId ) )
+            if ( empty( $orderId ) )
             {
                 $msg = 'خطا هنگام بازگشت از درگاه پرداخت';
                 saveToLog("payment.log", "gateway return failed. Order ID ".$order->order_id.". message: ".$msg );
                 $app->redirect($cancel_return, '<h2>'.$msg.'</h2>' , $msgType='Error');
             }
-                $data = array('order_id' => $orderId);
-                $url = 'https://api.raypay.ir/raypay/api/v1/Payment/checkInvoice?pInvoiceID=' . $invoiceId;
+                $url = 'https://api.raypay.ir/raypay/api/v1/Payment/verify';
 				$options = array('Content-Type: application/json');
 				$ch = curl_init();
 				curl_setopt($ch, CURLOPT_URL, $url);
-				curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+				curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($_POST));
 				curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
 				curl_setopt($ch, CURLOPT_HTTPHEADER,$options );
 				$result = curl_exec($ch);
@@ -148,13 +140,14 @@ class pm_raypay extends PaymentRoot{
                     saveToLog("payment.log", "Status failed. Order ID ".$orderId.". message: ".$msg );
                     $app->redirect($cancel_return, '<h4>'.$msg.'</h4>', $msgType='Error');
                 }
-                $state           = $result->Data->State;
+                $state           = $result->Data->Status;
                 $verify_order_id = $result->Data->FactorNumber;
+                $verify_invoice_id = $result->Data->InvoiceID;
                 $verify_amount   = $result->Data->Amount;
 
                 if ( empty($verify_order_id) || empty($verify_amount) || $state !== 1 )
                 {
-                    $msg  = 'پرداخت ناموفق بوده است. شناسه ارجاع بانکی رای پی : ' . $invoiceId;
+                    $msg  = 'پرداخت ناموفق بوده است. شناسه ارجاع بانکی رای پی : ' . $verify_invoice_id;
                     saveToLog("payment.log", "Status failed. Order ID ".$orderId.". message: ".$msg );
                     $app->redirect($cancel_return, '<h4>'.$msg.'</h4>', $msgType='Error');
                 }
@@ -162,7 +155,7 @@ class pm_raypay extends PaymentRoot{
                 {
                     $msg  = 'پرداخت شما با موفقیت انجام شد.';
                     $app->enqueueMessage( '<h2>'.$msg.'</h2>', 'message' );
-                    saveToLog("payment.log", "Status Complete. Order ID ".$order->order_id.". message: ".$msg . " invoice_id: " . $invoiceId);
+                    saveToLog("payment.log", "Status Complete. Order ID ".$order->order_id.". message: ".$msg . " invoice_id: " . $verify_invoice_id);
                     return array(1, "");
                 }
             return false;

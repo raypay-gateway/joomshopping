@@ -28,11 +28,23 @@ defined('_JEXEC') or die();
  </tr>
     <tr>
         <td  class="key">
-            <?php echo 'کد پذیرنده';?>
+            <?php echo 'شناسه کسب و کار';?>
         </td>
         <td style="text-align: right;">
-            <input type = "text" class = "inputbox" name = "pm_params[acceptor_code]" size="100" value = "<?php echo $params['acceptor_code']?>" />
-            <?php echo JHTML::tooltip('لطفا کد پذیرنده خود را از پنل رای پی دریافت کنید . ');?>
+            <input type = "text" class = "inputbox" name = "pm_params[marketing_id]" size="100" value = "<?php echo $params['marketing_id']?>" />
+            <?php echo JHTML::tooltip('لطفا شناسه کسب و کار خود را از پنل رای پی دریافت کنید . ');?>
+        </td>
+    </tr>
+    <tr>
+        <td  class="key">
+            <?php echo 'فعالسازی SandBox';?>
+        </td>
+        <td style="text-align: right;">
+            <?php
+            print JHTML::_('select.booleanlist', 'pm_params[sandbox]', 'class = "inputbox" size = "0"', $params['sandbox']);
+            echo JHTML::tooltip('با انتخاب این گزینه، پرداخت در محیط تست رای پی انجام می شود.');
+            ?>
+
         </td>
     </tr>
  <tr>
